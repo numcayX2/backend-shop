@@ -6,10 +6,12 @@ import {
   Patch,
   Param,
   Delete,
-} from '@nestjs/common';
+  Query,
+} from '@nestjs/common'; // 1. อย่าลืม import Query ตรงนี้
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import type { GetProductsQuery } from './products.service';
 
 @Controller('products')
 export class ProductsController {
@@ -20,9 +22,14 @@ export class ProductsController {
     return this.productsService.create(createProductDto);
   }
 
+  @Get('colors')
+  getColors() {
+    return this.productsService.getColors();
+  }
+
   @Get()
-  findAll() {
-    return this.productsService.findAll();
+  findAll(@Query() query: GetProductsQuery) {
+    return this.productsService.findAll(query);
   }
 
   @Get(':id')

@@ -6,12 +6,18 @@ import {
   IsNumber,
   Min,
   IsOptional,
+  IsArray,
 } from 'class-validator';
 
 export class CreateProductDto {
   @IsNotEmpty()
   @IsString()
   name: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true }) // สมาชิกข้างใน Array ต้องเป็น String ทุกตัว
+  colors?: string[];
 
   @IsNotEmpty()
   @IsNumber()

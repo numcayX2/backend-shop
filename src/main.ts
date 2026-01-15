@@ -14,11 +14,10 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // ตัด field แปลกปลอมทิ้งอัตโนมัติ
-
       forbidNonWhitelisted: true, // (Optional) แจ้ง Error ถ้ามี field แปลกปลอม
     }),
   );
-
+  app.enableCors();
   await app.listen(3000);
 }
 

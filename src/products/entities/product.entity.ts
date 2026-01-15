@@ -1,18 +1,20 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-
 import { HydratedDocument } from 'mongoose';
 
 export type ProductDocument = HydratedDocument<Product>;
 
-@Schema({ timestamps: true }) // เพิ่มวันที่สร้าง/แก้ไขให้อัตโนมัติ
+@Schema({ timestamps: true })
 export class Product {
-  @Prop({ required: true })
+  @Prop({ required: true, maxlength: 100 })
   name: string;
 
-  @Prop({ required: true, min: 0, type: Number, default: 0 })
+  @Prop([String])
+  colors: string[];
+
+  @Prop({ required: true, min: 0, max: 1_000_000_000_000 })
   price: number;
 
-  @Prop()
+  @Prop({ maxlength: 3000 })
   description: string;
 }
 
