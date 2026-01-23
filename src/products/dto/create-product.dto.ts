@@ -1,5 +1,5 @@
 // src/products/dto/create-product.dto.ts
-
+import { Type } from 'class-transformer';
 import {
   IsNotEmpty,
   IsString,
@@ -22,6 +22,7 @@ export class CreateProductDto {
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
+  @Type(() => Number)
   price: number;
 
   @IsOptional()

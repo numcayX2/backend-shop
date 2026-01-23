@@ -26,8 +26,11 @@ export class ProductsService {
     private readonly productModel: Model<Product>,
   ) {}
 
-  async create(dto: CreateProductDto): Promise<Product> {
-    return this.productModel.create(dto);
+  async create(dto: CreateProductDto, file?: Express.Multer.File) {
+    return this.productModel.create({
+      ...dto,
+      imageUrl: file ? file.filename : undefined,
+    });
   }
 
   async findAll(query: GetProductsQuery): Promise<Product[]> {

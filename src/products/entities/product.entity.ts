@@ -16,6 +16,9 @@ export class Product {
 
   @Prop({ maxlength: 3000 })
   description: string;
+
+  @Prop() // เก็บเป็น String (Path ของไฟล์) เช่น 'uploads/xxx-xxx.jpg'
+  imageUrl: string;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
