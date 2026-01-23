@@ -2,136 +2,195 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, SortOrder } from 'mongoose'; // 1. ตัด FilterQuery ออก (เหลือแค่ SortOrder)
+import { Product, ProductDocument } from './entities/product.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { Product } from './entities/product.entity';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface GetProductsQuery {
   keyword?: string;
   category?: string;
-  minPrice?: string;
-  maxPrice?: string;
+  minPrice?: number;
+  maxPrice?: number;
   sort?: string;
   color?: string;
 }
 
-// จำกัด field ที่อนุญาตให้ sort ได้ (กัน client ส่งมั่ว)
-const ALLOWED_SORT_FIELDS = ['price', 'createdAt', 'name'];
-
 @Injectable()
 export class ProductsService {
   constructor(
-    @InjectModel(Product.name)
-    private readonly productModel: Model<Product>,
+    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
   ) {}
 
-  async create(dto: CreateProductDto): Promise<Product> {
-    return this.productModel.create(dto);
+  private saveImage(file: Express.Multer.File): string {
+    if (!file.buffer) {
+      return `products/${file.filename}`;
+    }
+    const uploadDir = './uploads/products';
+
+    // สร้างโฟลเดอร์ถ้ายังไม่มี
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    // ตั้งชื่อไฟล์ใหม่: timestamp-random.ext
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
+    const filePath = path.join(uploadDir, fileName);
+
+    // เขียนไฟล์ลง disk
+    fs.writeFileSync(filePath, file.buffer);
+
+    // Return path ที่จะเก็บใน DB
+    return `products/${fileName}`;
   }
 
+  private deleteImage(imagePath: string) {
+    const fullPath = path.join('./uploads', imagePath);
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+  }
+
+  // 1. Create Product
+  async create(
+    createProductDto: CreateProductDto,
+    file?: Express.Multer.File,
+  ): Promise<Product> {
+    const data: Partial<Product> = { ...createProductDto };
+
+    if (file) {
+      data.imageUrl = this.saveImage(file);
+    }
+
+    const newProduct = new this.productModel(data);
+    return await newProduct.save();
+  }
+
+  // 2. Find All
   async findAll(query: GetProductsQuery): Promise<Product[]> {
-    const filter = this.buildFilter(query);
-    const sortOption = this.buildSort(query.sort);
-
-    return this.productModel
-      .find(filter)
-      .sort(sortOption)
-      .lean() // performance ดีขึ้น (ถ้าไม่ต้องใช้ instance method)
-      .exec();
-  }
-
-  async findOne(id: string): Promise<Product> {
-    const product = await this.productModel.findById(id).lean().exec();
-
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
-
-    return product;
-  }
-
-  async getColors(): Promise<string[]> {
-    return this.productModel.distinct('colors').exec();
-  }
-
-  async update(id: string, dto: UpdateProductDto): Promise<Product> {
-    const product = await this.productModel
-      .findByIdAndUpdate(id, dto, { new: true })
-      .lean()
-      .exec();
-
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
-
-    return product;
-  }
-
-  async remove(id: string): Promise<Product> {
-    const product = await this.productModel.findByIdAndDelete(id).lean().exec();
-
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${id} not found`);
-    }
-
-    return product;
-  }
-
-  // -------------------------
-  // Helper Methods
-  // -------------------------
-
-  private buildFilter(query: GetProductsQuery): Record<string, any> {
-    const { keyword, category, minPrice, maxPrice, color } = query;
+    const { keyword, category, minPrice, maxPrice, sort, color } = query;
     const filter: Record<string, any> = {};
 
     if (keyword) {
-      filter.name = {
-        $regex: this.escapeRegex(keyword),
-        $options: 'i',
-      };
+      filter.$or = [
+        { name: { $regex: keyword, $options: 'i' } },
+        { description: { $regex: keyword, $options: 'i' } },
+      ];
     }
-
     if (category) {
       filter.category = category;
     }
 
-    if (minPrice || maxPrice) {
-      filter.price = {
-        ...(minPrice && { $gte: Number(minPrice) }),
-        ...(maxPrice && { $lte: Number(maxPrice) }),
-      };
+    // ✅ แก้ไข Logic Price ตรงนี้ครับ
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      const priceQuery: Record<string, number> = {};
+      let hasPriceFilter = false;
+
+      // เช็คว่ามีค่า และแปลงเป็น String แล้วไม่ว่างเปล่า
+      if (minPrice !== undefined && String(minPrice).trim() !== '') {
+        priceQuery.$gte = Number(minPrice);
+        hasPriceFilter = true;
+      }
+
+      // เช็คว่ามีค่า และแปลงเป็น String แล้วไม่ว่างเปล่า (แก้ปัญหา maxPrice="" กลายเป็น 0)
+      if (maxPrice !== undefined && String(maxPrice).trim() !== '') {
+        priceQuery.$lte = Number(maxPrice);
+        hasPriceFilter = true;
+      }
+
+      // ถ้ามีการตั้งค่าจริง ค่อยยัดใส่ filter
+      if (hasPriceFilter) {
+        filter.price = priceQuery;
+      }
     }
 
     if (color) {
-      const colors = color.split(',').map((c) => c.trim());
-
-      filter.colors = {
-        $in: colors.map((c) => new RegExp(`^${this.escapeRegex(c)}$`, 'i')),
-      };
+      const colorsArray = color
+        .split(',')
+        .map((c) => new RegExp(`^${c.trim()}$`, 'i'));
+      filter.colors = { $in: colorsArray };
     }
 
-    return filter;
+    let sortOption: { [key: string]: SortOrder } = { createdAt: -1 };
+
+    if (sort) {
+      if (sort === 'price_asc') sortOption = { price: 1 };
+      else if (sort === 'price_desc') sortOption = { price: -1 };
+      else if (sort === 'name_asc') sortOption = { name: 1 };
+      else if (sort === 'name_desc') sortOption = { name: -1 };
+    }
+
+    return this.productModel.find(filter).sort(sortOption).exec();
   }
 
-  private buildSort(sort?: string): { [key: string]: 1 | -1 } {
-    if (!sort) {
-      return { createdAt: -1 };
-    }
+  async findMaxPrice(): Promise<{ maxPrice: number }> {
+    // หา 1 ตัวที่แพงที่สุด (sort price -1)
+    const product = await this.productModel
+      .findOne()
+      .sort({ price: -1 })
+      .select('price') // เอาแค่ field price พอ
+      .exec();
 
-    const [field, order] = sort.split('_');
-
-    if (!ALLOWED_SORT_FIELDS.includes(field)) {
-      return { createdAt: -1 };
-    }
-
-    return {
-      [field]: order === 'desc' ? -1 : 1,
-    };
+    return { maxPrice: product ? product.price : 0 };
   }
 
-  private escapeRegex(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 3. Find One
+  async findOne(id: string): Promise<Product> {
+    const product = await this.productModel.findById(id).exec();
+    if (!product) {
+      throw new NotFoundException(`Product #${id} not found`);
+    }
+    return product;
+  }
+
+  // 4. Update Product
+  async update(
+    id: string,
+    updateProductDto: UpdateProductDto,
+    file?: Express.Multer.File,
+  ): Promise<Product> {
+    const existingProduct = await this.productModel.findById(id).exec();
+    if (!existingProduct) {
+      throw new NotFoundException(`Product #${id} not found`);
+    }
+
+    const updateData: Partial<Product> = { ...updateProductDto };
+
+    if (file) {
+      if (existingProduct.imageUrl) {
+        this.deleteImage(existingProduct.imageUrl);
+      }
+      updateData.imageUrl = this.saveImage(file);
+    }
+
+    const updatedProduct = await this.productModel
+      .findByIdAndUpdate(id, updateData, { new: true })
+      .exec();
+
+    if (!updatedProduct) throw new NotFoundException();
+    return updatedProduct;
+  }
+
+  // 5. Remove Product
+  async remove(id: string): Promise<Product> {
+    const deletedProduct = await this.productModel.findByIdAndDelete(id).exec();
+    if (!deletedProduct) {
+      throw new NotFoundException(`Product #${id} not found`);
+    }
+
+    if (deletedProduct.imageUrl) {
+      this.deleteImage(deletedProduct.imageUrl);
+    }
+
+    return deletedProduct;
+  }
+
+  // 6. Get Colors
+  async getColors(): Promise<string[]> {
+    const products = await this.productModel.find().select('colors').exec();
+    const allColors = products.flatMap((p) => p.colors || []);
+    return Array.from(new Set(allColors.map((c) => c.toLowerCase()))).sort();
   }
 }

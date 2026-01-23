@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsArray,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateProductDto {
   @IsNotEmpty()
@@ -22,6 +23,7 @@ export class CreateProductDto {
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
+  @Type(() => Number) // แปลงค่าเป็น number
   price: number;
 
   @IsOptional()

@@ -1,3 +1,5 @@
+// src/products/products.controller.ts
+
 import {
   Controller,
   Get,
@@ -7,24 +9,31 @@ import {
   Param,
   Delete,
   Query,
-} from '@nestjs/common'; // 1. อย่าลืม import Query ตรงนี้
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+} from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import type { GetProductsQuery } from './products.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Express } from 'express';
+import { PRODUCT_IMAGE } from './products.constants';
 
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Post()
-  create(@Body() createProductDto: CreateProductDto) {
-    return this.productsService.create(createProductDto);
-  }
-
   @Get('colors')
   getColors() {
     return this.productsService.getColors();
+  }
+
+  @Get('max-price')
+  getMaxPrice() {
+    return this.productsService.findMaxPrice();
   }
 
   @Get()
@@ -37,9 +46,41 @@ export class ProductsController {
     return this.productsService.findOne(id);
   }
 
+  @Post()
+  @UseInterceptors(FileInterceptor('image'))
+  create(
+    @Body() dto: CreateProductDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: false,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: PRODUCT_IMAGE.MAX_SIZE }),
+        ],
+      }),
+    )
+    file?: Express.Multer.File,
+  ) {
+    return this.productsService.create(dto, file);
+  }
+
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
-    return this.productsService.update(id, updateProductDto);
+  @UseInterceptors(FileInterceptor('image')) // 1. เพิ่ม Interceptor
+  update(
+    @Param('id') id: string,
+    @Body() updateProductDto: UpdateProductDto,
+    // 2. เพิ่มตัวรับไฟล์ (เหมือน function create)
+    @UploadedFile(
+      new ParseFilePipe({
+        fileIsRequired: false,
+        validators: [
+          new MaxFileSizeValidator({ maxSize: PRODUCT_IMAGE.MAX_SIZE }),
+        ],
+      }),
+    )
+    file?: Express.Multer.File,
+  ) {
+    // 3. ส่ง file ไปให้ Service ด้วย
+    return this.productsService.update(id, updateProductDto, file);
   }
 
   @Delete(':id')
