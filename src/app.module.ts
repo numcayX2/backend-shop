@@ -4,10 +4,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ProductsModule } from './products/products.module';
-
-// 1. เพิ่ม Import ตรงนี้
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -38,6 +37,7 @@ import { join } from 'path';
     }),
 
     ProductsModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
