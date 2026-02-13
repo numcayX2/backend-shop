@@ -1,5 +1,3 @@
-// src/products/products.controller.ts
-
 import {
   Controller,
   Get,
@@ -13,6 +11,7 @@ import {
   UploadedFile,
   ParseFilePipe,
   MaxFileSizeValidator,
+  UseGuards, // <--- 1. อย่าลืม Import อันนี้
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -22,9 +21,16 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
 import { PRODUCT_IMAGE } from './products.constants';
 
+// --- Import Guards และ Decorator ---
+import { AccessTokenGuard } from '../auth/guards/access-token.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
+
+  // --- Public Routes (ใครก็ดูได้) ---
 
   @Get('colors')
   getColors() {
@@ -46,7 +52,11 @@ export class ProductsController {
     return this.productsService.findOne(id);
   }
 
+  // --- Protected Routes (ต้องเป็น Admin เท่านั้น) ---
+
   @Post()
+  @UseGuards(AccessTokenGuard, RolesGuard) // 1. เช็ค Login + เช็ค Role
+  @Roles('admin') // 2. ระบุว่าต้องเป็น admin
   @UseInterceptors(FileInterceptor('image'))
   create(
     @Body() dto: CreateProductDto,
@@ -64,11 +74,12 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  @UseInterceptors(FileInterceptor('image')) // 1. เพิ่ม Interceptor
+  @UseGuards(AccessTokenGuard, RolesGuard) // <-- ล็อคการแก้ไขด้วย
+  @Roles('admin')
+  @UseInterceptors(FileInterceptor('image'))
   update(
     @Param('id') id: string,
     @Body() updateProductDto: UpdateProductDto,
-    // 2. เพิ่มตัวรับไฟล์ (เหมือน function create)
     @UploadedFile(
       new ParseFilePipe({
         fileIsRequired: false,
@@ -79,11 +90,12 @@ export class ProductsController {
     )
     file?: Express.Multer.File,
   ) {
-    // 3. ส่ง file ไปให้ Service ด้วย
     return this.productsService.update(id, updateProductDto, file);
   }
 
   @Delete(':id')
+  @UseGuards(AccessTokenGuard, RolesGuard) // <-- ล็อคการลบด้วย
+  @Roles('admin')
   remove(@Param('id') id: string) {
     return this.productsService.remove(id);
   }
